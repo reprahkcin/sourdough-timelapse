@@ -39,8 +39,15 @@ class SourdoughMonitor:
             config_path: Path to configuration file
         """
         # Load configuration
-        with open(config_path, 'r') as f:
-            self.config = yaml.safe_load(f)
+        try:
+            with open(config_path, 'r') as f:
+                self.config = yaml.safe_load(f)
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Configuration file not found: {config_path}")
+        except yaml.YAMLError as e:
+            raise ValueError(f"Invalid YAML in configuration file: {e}")
+        except Exception as e:
+            raise RuntimeError(f"Error loading configuration: {e}")
         
         # Initialize camera
         self.camera = None
@@ -135,14 +142,13 @@ class SourdoughMonitor:
         
         # Add marker info to measurements
         measurements['markers_detected'] = len(marker_info)
-        measurements['marker_info'] = {
-            int(k): {
-                'center': v['center'].tolist(),
-                'size_pixels': float(v['size_pixels']),
-                'pixels_per_mm': float(v['pixels_per_mm'])
+        measurements['marker_info'] = {}
+        for k, v in marker_info.items():
+            measurements['marker_info'][int(k)] = {
+                'center': v.get('center', [0, 0]).tolist() if hasattr(v.get('center', [0, 0]), 'tolist') else v.get('center', [0, 0]),
+                'size_pixels': float(v.get('size_pixels', 0)),
+                'pixels_per_mm': float(v.get('pixels_per_mm', 1.0))
             }
-            for k, v in marker_info.items()
-        }
         
         return measurements, annotated, marker_info
     
@@ -159,25 +165,32 @@ class SourdoughMonitor:
         if timestamp is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         
-        # Save original image
-        image_path = self.output_dir / f"capture_{timestamp}.jpg"
-        cv2.imwrite(str(image_path), image)
-        
-        # Save annotated image if enabled
-        if self.save_annotated:
-            annotated_path = self.output_dir / f"annotated_{timestamp}.jpg"
-            cv2.imwrite(str(annotated_path), annotated)
-        
-        # Save measurements as JSON
-        measurements_path = self.output_dir / f"measurements_{timestamp}.json"
-        with open(measurements_path, 'w') as f:
-            json.dump(measurements, f, indent=2)
-        
-        print(f"Saved results to {self.output_dir}")
-        print(f"  - Image: {image_path.name}")
-        if self.save_annotated:
-            print(f"  - Annotated: {annotated_path.name}")
-        print(f"  - Measurements: {measurements_path.name}")
+        try:
+            # Save original image
+            image_path = self.output_dir / f"capture_{timestamp}.jpg"
+            cv2.imwrite(str(image_path), image)
+            
+            # Save annotated image if enabled
+            if self.save_annotated:
+                annotated_path = self.output_dir / f"annotated_{timestamp}.jpg"
+                cv2.imwrite(str(annotated_path), annotated)
+            
+            # Save measurements as JSON
+            measurements_path = self.output_dir / f"measurements_{timestamp}.json"
+            with open(measurements_path, 'w') as f:
+                json.dump(measurements, f, indent=2)
+            
+            print(f"Saved results to {self.output_dir}")
+            print(f"  - Image: {image_path.name}")
+            if self.save_annotated:
+                print(f"  - Annotated: {annotated_path.name}")
+            print(f"  - Measurements: {measurements_path.name}")
+        except PermissionError:
+            print(f"Error: Permission denied when writing to {self.output_dir}")
+        except IOError as e:
+            print(f"Error: Failed to save files: {e}")
+        except Exception as e:
+            print(f"Error: Unexpected error while saving results: {e}")
     
     def capture_and_analyze(self):
         """
@@ -269,33 +282,46 @@ Examples:
     
     # Generate marker mode
     if args.generate_marker is not None:
-        # Load config just to get marker settings
-        with open(args.config, 'r') as f:
-            config = yaml.safe_load(f)
-        
-        marker_config = config.get('marker', {})
-        detector = MarkerDetector(
-            dictionary_name=marker_config.get('dictionary', 'DICT_4X4_50'),
-            marker_size_mm=marker_config.get('marker_size_mm', 50)
-        )
-        
-        marker_image = detector.generate_marker(args.generate_marker, size_pixels=400)
-        output_path = f"marker_{args.generate_marker}.png"
-        cv2.imwrite(output_path, marker_image)
-        print(f"Generated marker ID {args.generate_marker} -> {output_path}")
-        print(f"Print this marker at {marker_config.get('marker_size_mm', 50)}mm x {marker_config.get('marker_size_mm', 50)}mm")
+        try:
+            # Load config just to get marker settings
+            with open(args.config, 'r') as f:
+                config = yaml.safe_load(f)
+            
+            marker_config = config.get('marker', {})
+            detector = MarkerDetector(
+                dictionary_name=marker_config.get('dictionary', 'DICT_4X4_50'),
+                marker_size_mm=marker_config.get('marker_size_mm', 50)
+            )
+            
+            marker_image = detector.generate_marker(args.generate_marker, size_pixels=400)
+            output_path = f"marker_{args.generate_marker}.png"
+            cv2.imwrite(output_path, marker_image)
+            print(f"Generated marker ID {args.generate_marker} -> {output_path}")
+            print(f"Print this marker at {marker_config.get('marker_size_mm', 50)}mm x {marker_config.get('marker_size_mm', 50)}mm")
+        except Exception as e:
+            print(f"Error generating marker: {e}")
+            sys.exit(1)
         return
     
     # Initialize monitor
-    monitor = SourdoughMonitor(config_path=args.config)
+    try:
+        monitor = SourdoughMonitor(config_path=args.config)
+    except Exception as e:
+        print(f"Error initializing monitor: {e}")
+        sys.exit(1)
     
     # Run requested mode
-    if args.continuous:
-        monitor.run_continuous()
-    else:
-        # Default to single capture
-        monitor.capture_and_analyze()
+    try:
+        if args.continuous:
+            monitor.run_continuous()
+        else:
+            # Default to single capture
+            monitor.capture_and_analyze()
+            monitor.cleanup()
+    except Exception as e:
+        print(f"Error during monitoring: {e}")
         monitor.cleanup()
+        sys.exit(1)
 
 
 if __name__ == "__main__":
