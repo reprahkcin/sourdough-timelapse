@@ -1,0 +1,42 @@
+# Sourdough Timelapse Configuration
+
+camera:
+  # Camera resolution
+  width: 1920
+  height: 1080
+  # Image format
+  format: "RGB888"
+  # Auto-exposure and white balance
+  auto_exposure: true
+  auto_white_balance: true
+
+marker:
+  # ArUco marker dictionary (DICT_4X4_50, DICT_5X5_100, etc.)
+  dictionary: "DICT_4X4_50"
+  # Marker size in millimeters (physical size of the printed marker)
+  marker_size_mm: 50
+  # IDs to look for (marker ID at bottom of jar for reference)
+  reference_marker_id: 0
+
+monitoring:
+  # Capture interval in seconds
+  capture_interval: 300  # 5 minutes
+  # Output directory for images
+  output_dir: "./captures"
+  # Save annotated images with markers and measurements
+  save_annotated: true
+  # Minimum marker detection confidence (0-1)
+  min_marker_confidence: 0.5
+
+growth:
+  # Region of interest (ROI) for culture detection
+  # These are percentages of image dimensions
+  roi_x_start: 0.3  # 30% from left
+  roi_x_end: 0.7    # 70% from left
+  roi_y_start: 0.2  # 20% from top
+  roi_y_end: 0.9    # 90% from top
+  # Edge detection parameters
+  edge_threshold1: 50
+  edge_threshold2: 150
+  # Minimum contour area (pixels) to consider as culture boundary
+  min_contour_area: 1000
